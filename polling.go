@@ -1,7 +1,6 @@
 package balance
 
 import (
-	"reflect"
 	"sync"
 )
 
@@ -16,17 +15,25 @@ func newSimplePolling() *simplePolling {
 }
 
 func (p *simplePolling) AddNode(node interface{}) {
+	nt, ok := node.(Node)
+	if !ok {
+		return
+	}
 	p.Lock()
 	defer p.Unlock()
-	p.endpoints = append(p.endpoints, node)
+	p.endpoints = append(p.endpoints, nt)
 }
 
 func (p *simplePolling) RemoveNode(target interface{}) {
+	nt, ok := target.(Node)
+	if !ok {
+		return
+	}
 	p.Lock()
 	defer p.Unlock()
 
 	for i, v := range p.endpoints {
-		if reflect.DeepEqual(v, target) {
+		if nt.Id() == v.Id() {
 			p.endpoints = append(p.endpoints[:i], p.endpoints[i+1:]...)
 			break
 		}
@@ -69,22 +76,29 @@ func (p *pollingWithWeight) weight() (max int, total int) {
 }
 
 func (p *pollingWithWeight) AddNode(node interface{}) {
+	nt, ok := node.(WeightNode)
+	if !ok {
+		return
+	}
+
 	p.Lock()
 	defer p.Unlock()
 
-	if tn, ok := node.(WeightNode); ok {
-		p.endpoints = append(p.endpoints, tn)
-	}
-
+	p.endpoints = append(p.endpoints, nt)
 	p.currentWeight, p.totalWeight = p.weight()
 }
 
 func (p *pollingWithWeight) RemoveNode(node interface{}) {
+	nt, ok := node.(WeightNode)
+	if !ok {
+		return
+	}
+
 	p.Lock()
 	defer p.Unlock()
 
 	for i, n := range p.endpoints {
-		if reflect.DeepEqual(n, node) {
+		if n.Id() == nt.Id() {
 			p.endpoints = append(p.endpoints[:i], p.endpoints[i+1:]...)
 			break
 		}

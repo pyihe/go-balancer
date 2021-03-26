@@ -2,7 +2,6 @@ package balance
 
 import (
 	"math/rand"
-	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -18,16 +17,28 @@ func newSimpleRandom() *simpleRandom {
 }
 
 func (s *simpleRandom) AddNode(node interface{}) {
+	nt, ok := node.(Node)
+	if !ok {
+		return
+	}
+
 	s.Lock()
 	defer s.Unlock()
-	s.endpoints = append(s.endpoints, node)
+
+	s.endpoints = append(s.endpoints, nt)
 }
 
 func (s *simpleRandom) RemoveNode(node interface{}) {
+	nt, ok := node.(Node)
+	if !ok {
+		return
+	}
+
 	s.Lock()
 	defer s.Unlock()
+
 	for i, n := range s.endpoints {
-		if reflect.DeepEqual(node, n) {
+		if nt.Id() == n.Id() {
 			s.endpoints = append(s.endpoints[:i], s.endpoints[i+1:]...)
 		}
 	}
@@ -67,21 +78,29 @@ func (r *randomWithWeight) Swap(i, j int) {
 }
 
 func (r *randomWithWeight) AddNode(node interface{}) {
+	tn, ok := node.(WeightNode)
+	if !ok {
+		return
+	}
+
 	r.Lock()
 	defer r.Unlock()
 
-	if tn, ok := node.(WeightNode); ok {
-		r.totalWeight += tn.Weight()
-		r.endpoints = append(r.endpoints, tn)
-	}
+	r.totalWeight += tn.Weight()
+	r.endpoints = append(r.endpoints, tn)
 }
 
 func (r *randomWithWeight) RemoveNode(node interface{}) {
+	tn, ok := node.(WeightNode)
+	if !ok {
+		return
+	}
+
 	r.Lock()
 	defer r.Unlock()
 
 	for i, n := range r.endpoints {
-		if reflect.DeepEqual(n, node) {
+		if tn.Id() == n.Id() {
 			r.totalWeight -= n.Weight()
 			r.endpoints = append(r.endpoints[:i], r.endpoints[i+1:]...)
 			break
