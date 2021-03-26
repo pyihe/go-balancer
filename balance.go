@@ -3,6 +3,7 @@ package balance
 type Balancer interface {
 	AddNode(interface{})
 	RemoveNode(string)
+	GetNode(string) interface{}
 	Next(...interface{}) interface{}
 }
 

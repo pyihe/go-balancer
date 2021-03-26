@@ -65,6 +65,17 @@ func (h *hashMap) RemoveNode(key string) {
 	delete(h.data, h.keys[uint32(idx%len(h.keys))])
 }
 
+func (h *hashMap) GetNode(key string) interface{} {
+	h.Lock()
+	defer h.Unlock()
+
+	hv := h.hash([]byte(key))
+	idx := sort.Search(len(h.keys), func(i int) bool {
+		return h.keys[i] >= hv
+	})
+	return h.data[h.keys[uint32(idx%len(h.keys))]]
+}
+
 func (h *hashMap) Next(args ...interface{}) interface{} {
 	var result []HashNode
 	for _, arg := range args {

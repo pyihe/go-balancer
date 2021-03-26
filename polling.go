@@ -14,6 +14,18 @@ func newSimplePolling() *simplePolling {
 	return &simplePolling{}
 }
 
+func (p *simplePolling) GetNode(id string) interface{} {
+	p.RLock()
+	defer p.RUnlock()
+
+	for _, n := range p.endpoints {
+		if n.Id() == id {
+			return n
+		}
+	}
+	return nil
+}
+
 func (p *simplePolling) AddNode(node interface{}) {
 	nt, ok := node.(Node)
 	if !ok {
@@ -69,6 +81,17 @@ func (p *pollingWithWeight) weight() (max int, total int) {
 		}
 	}
 	return
+}
+
+func (p *pollingWithWeight) GetNode(id string) interface{} {
+	p.Lock()
+	defer p.Unlock()
+	for _, n := range p.endpoints {
+		if n.Id() == id {
+			return n
+		}
+	}
+	return nil
 }
 
 func (p *pollingWithWeight) AddNode(node interface{}) {

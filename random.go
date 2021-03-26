@@ -16,6 +16,18 @@ func newSimpleRandom() *simpleRandom {
 	return &simpleRandom{}
 }
 
+func (s *simpleRandom) GetNode(id string) interface{} {
+	s.RLock()
+	defer s.RUnlock()
+
+	for _, n := range s.endpoints {
+		if n.Id() == id {
+			return n
+		}
+	}
+	return nil
+}
+
 func (s *simpleRandom) AddNode(node interface{}) {
 	nt, ok := node.(Node)
 	if !ok {
@@ -70,6 +82,17 @@ func (r *randomWithWeight) Less(i, j int) bool {
 
 func (r *randomWithWeight) Swap(i, j int) {
 	r.endpoints[i], r.endpoints[j] = r.endpoints[j], r.endpoints[i]
+}
+
+func (r *randomWithWeight) GetNode(id string) interface{} {
+	r.RLock()
+	defer r.RUnlock()
+	for _, n := range r.endpoints {
+		if n.Id() == id {
+			return n
+		}
+	}
+	return nil
 }
 
 func (r *randomWithWeight) AddNode(node interface{}) {
