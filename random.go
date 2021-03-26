@@ -28,17 +28,12 @@ func (s *simpleRandom) AddNode(node interface{}) {
 	s.endpoints = append(s.endpoints, nt)
 }
 
-func (s *simpleRandom) RemoveNode(node interface{}) {
-	nt, ok := node.(Node)
-	if !ok {
-		return
-	}
-
+func (s *simpleRandom) RemoveNode(nodeId string) {
 	s.Lock()
 	defer s.Unlock()
 
 	for i, n := range s.endpoints {
-		if nt.Id() == n.Id() {
+		if nodeId == n.Id() {
 			s.endpoints = append(s.endpoints[:i], s.endpoints[i+1:]...)
 		}
 	}
@@ -90,17 +85,12 @@ func (r *randomWithWeight) AddNode(node interface{}) {
 	r.endpoints = append(r.endpoints, tn)
 }
 
-func (r *randomWithWeight) RemoveNode(node interface{}) {
-	tn, ok := node.(WeightNode)
-	if !ok {
-		return
-	}
-
+func (r *randomWithWeight) RemoveNode(nodeId string) {
 	r.Lock()
 	defer r.Unlock()
 
 	for i, n := range r.endpoints {
-		if tn.Id() == n.Id() {
+		if nodeId == n.Id() {
 			r.totalWeight -= n.Weight()
 			r.endpoints = append(r.endpoints[:i], r.endpoints[i+1:]...)
 			break

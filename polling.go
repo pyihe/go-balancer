@@ -24,16 +24,12 @@ func (p *simplePolling) AddNode(node interface{}) {
 	p.endpoints = append(p.endpoints, nt)
 }
 
-func (p *simplePolling) RemoveNode(target interface{}) {
-	nt, ok := target.(Node)
-	if !ok {
-		return
-	}
+func (p *simplePolling) RemoveNode(nodeId string) {
 	p.Lock()
 	defer p.Unlock()
 
 	for i, v := range p.endpoints {
-		if nt.Id() == v.Id() {
+		if nodeId == v.Id() {
 			p.endpoints = append(p.endpoints[:i], p.endpoints[i+1:]...)
 			break
 		}
@@ -88,17 +84,12 @@ func (p *pollingWithWeight) AddNode(node interface{}) {
 	p.currentWeight, p.totalWeight = p.weight()
 }
 
-func (p *pollingWithWeight) RemoveNode(node interface{}) {
-	nt, ok := node.(WeightNode)
-	if !ok {
-		return
-	}
-
+func (p *pollingWithWeight) RemoveNode(nodeId string) {
 	p.Lock()
 	defer p.Unlock()
 
 	for i, n := range p.endpoints {
-		if n.Id() == nt.Id() {
+		if n.Id() == nodeId {
 			p.endpoints = append(p.endpoints[:i], p.endpoints[i+1:]...)
 			break
 		}

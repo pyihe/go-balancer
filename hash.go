@@ -53,14 +53,10 @@ func (h *hashMap) AddNode(node interface{}) {
 	}
 }
 
-func (h *hashMap) RemoveNode(node interface{}) {
+func (h *hashMap) RemoveNode(key string) {
 	h.Lock()
 	defer h.Unlock()
 
-	if _, ok := node.(HashNode); !ok {
-		return
-	}
-	var key = node.(HashNode).Identifier()
 	var hv = h.hash([]byte(key))
 	var idx = sort.Search(len(h.keys), func(i int) bool {
 		return h.keys[i] >= hv
