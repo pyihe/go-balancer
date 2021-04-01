@@ -92,7 +92,7 @@ func (h *hashMap) Next(args ...interface{}) interface{} {
 	return result
 }
 
-func (h *hashMap) Range(f func(node HashNode) bool) {
+func (h *hashMap) Range(f func(node interface{}) bool) {
 	if len(h.data) == 0 {
 		return
 	}

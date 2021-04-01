@@ -62,7 +62,7 @@ func (s *simpleRandom) Next(args ...interface{}) interface{} {
 	return s.endpoints[rand.Intn(total)]
 }
 
-func (s *simpleRandom) Range(f func(node Node) bool) {
+func (s *simpleRandom) Range(f func(node interface{}) bool) {
 	if len(s.endpoints) == 0 {
 		return
 	}
@@ -155,7 +155,7 @@ func (r *randomWithWeight) Next(args ...interface{}) interface{} {
 	return currentNode
 }
 
-func (r *randomWithWeight) Range(f func(node WeightNode) bool) {
+func (r *randomWithWeight) Range(f func(node interface{}) bool) {
 	if len(r.endpoints) == 0 {
 		return
 	}

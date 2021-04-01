@@ -62,7 +62,7 @@ func (p *simplePolling) Next(args ...interface{}) interface{} {
 	return node
 }
 
-func (p *simplePolling) Range(f func(node Node) bool) {
+func (p *simplePolling) Range(f func(node interface{}) bool) {
 	if len(p.endpoints) == 0{
 		return
 	}
@@ -163,7 +163,7 @@ func (p *pollingWithWeight) Next(args ...interface{}) interface{} {
 	return currentNode
 }
 
-func (p *pollingWithWeight) Range(f func(node WeightNode) bool) {
+func (p *pollingWithWeight) Range(f func(node interface{}) bool) {
 	if len(p.endpoints) == 0{
 		return
 	}

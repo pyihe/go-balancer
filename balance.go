@@ -5,6 +5,7 @@ type Balancer interface {
 	RemoveNode(string)
 	GetNode(string) interface{}
 	Next(...interface{}) interface{}
+	Range(func(interface{}) bool)
 }
 
 // 普通节点，非权重，非hash
