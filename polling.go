@@ -62,6 +62,18 @@ func (p *simplePolling) Next(args ...interface{}) interface{} {
 	return node
 }
 
+func (p *simplePolling) Range(f func(node Node) bool) {
+	if len(p.endpoints) == 0{
+		return
+	}
+
+	for _, ep := range p.endpoints {
+		if !f(ep) {
+			break
+		}
+	}
+}
+
 type pollingWithWeight struct {
 	sync.Mutex
 	totalWeight   int
@@ -149,4 +161,16 @@ func (p *pollingWithWeight) Next(args ...interface{}) interface{} {
 
 	p.currentWeight, p.totalWeight = p.weight()
 	return currentNode
+}
+
+func (p *pollingWithWeight) Range(f func(node WeightNode) bool) {
+	if len(p.endpoints) == 0{
+		return
+	}
+
+	for _, ep := range p.endpoints {
+		if !f(ep) {
+			break
+		}
+	}
 }

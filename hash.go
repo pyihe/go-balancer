@@ -91,3 +91,14 @@ func (h *hashMap) Next(args ...interface{}) interface{} {
 	}
 	return result
 }
+
+func (h *hashMap) Range(f func(node HashNode) bool) {
+	if len(h.data) == 0 {
+		return
+	}
+	for _, ep := range h.data {
+		if !f(ep) {
+			break
+		}
+	}
+}

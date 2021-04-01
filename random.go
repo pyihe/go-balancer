@@ -62,6 +62,18 @@ func (s *simpleRandom) Next(args ...interface{}) interface{} {
 	return s.endpoints[rand.Intn(total)]
 }
 
+func (s *simpleRandom) Range(f func(node Node) bool) {
+	if len(s.endpoints) == 0 {
+		return
+	}
+
+	for _, ep := range s.endpoints {
+		if !f(ep) {
+			break
+		}
+	}
+}
+
 type randomWithWeight struct {
 	sync.RWMutex
 	totalWeight int
@@ -141,4 +153,16 @@ func (r *randomWithWeight) Next(args ...interface{}) interface{} {
 		currentNode = r.endpoints[idx]
 	}
 	return currentNode
+}
+
+func (r *randomWithWeight) Range(f func(node WeightNode) bool) {
+	if len(r.endpoints) == 0 {
+		return
+	}
+
+	for _, ep := range r.endpoints {
+		if !f(ep) {
+			break
+		}
+	}
 }
