@@ -53,6 +53,9 @@ func (p *simplePolling) Next(args ...interface{}) interface{} {
 	defer p.RUnlock()
 
 	total := len(p.endpoints)
+	if total == 0 {
+		return nil
+	}
 
 	if p.currentIndex >= total {
 		p.currentIndex = 0
@@ -63,7 +66,7 @@ func (p *simplePolling) Next(args ...interface{}) interface{} {
 }
 
 func (p *simplePolling) Range(f func(node interface{}) bool) {
-	if len(p.endpoints) == 0{
+	if len(p.endpoints) == 0 {
 		return
 	}
 
@@ -164,7 +167,7 @@ func (p *pollingWithWeight) Next(args ...interface{}) interface{} {
 }
 
 func (p *pollingWithWeight) Range(f func(node interface{}) bool) {
-	if len(p.endpoints) == 0{
+	if len(p.endpoints) == 0 {
 		return
 	}
 
