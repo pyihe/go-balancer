@@ -1,168 +1,102 @@
 package balance
 
 import (
+	"fmt"
 	"math/rand"
-	"sort"
 	"sync"
 	"time"
 )
 
-type simpleRandom struct {
+type random struct {
 	sync.RWMutex
-	endpoints []Node
+	src          *rand.Rand
+	existServers map[string]struct{}
+	servers      nodeList // 根据权重从小到大
 }
 
-func newSimpleRandom() *simpleRandom {
-	return &simpleRandom{}
-}
-
-func (s *simpleRandom) GetNode(id string) interface{} {
-	s.RLock()
-	defer s.RUnlock()
-
-	for _, n := range s.endpoints {
-		if n.Id() == id {
-			return n
-		}
-	}
-	return nil
-}
-
-func (s *simpleRandom) AddNode(node interface{}) {
-	nt, ok := node.(Node)
-	if !ok {
-		return
-	}
-
-	s.Lock()
-	defer s.Unlock()
-
-	s.endpoints = append(s.endpoints, nt)
-}
-
-func (s *simpleRandom) RemoveNode(nodeId string) {
-	s.Lock()
-	defer s.Unlock()
-
-	for i, n := range s.endpoints {
-		if nodeId == n.Id() {
-			s.endpoints = append(s.endpoints[:i], s.endpoints[i+1:]...)
-		}
+func NewRandom() *random {
+	return &random{
+		src:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		existServers: make(map[string]struct{}),
+		servers:      nil,
 	}
 }
 
-func (s *simpleRandom) Next(args ...interface{}) interface{} {
-	s.RLock()
-	defer s.RUnlock()
-	total := len(s.endpoints)
-	if total == 0 {
+func (r *random) Next(ids ...string) Node {
+	if len(r.servers) == 0 {
 		return nil
 	}
-	rand.Seed(time.Now().UnixNano())
-	return s.endpoints[rand.Intn(total)]
-}
+	var nodeLen = len(r.servers)
+	var maxWeight = r.servers[nodeLen-1].Weight()
+	fmt.Println(maxWeight)
+	var targetWeight = r.src.Int63n(maxWeight + 1)
+	var result Node
 
-func (s *simpleRandom) Range(f func(node interface{}) bool) {
-	if len(s.endpoints) == 0 {
-		return
-	}
-
-	for _, ep := range s.endpoints {
-		if !f(ep) {
+	r.RLock()
+	defer r.RUnlock()
+	for i := range r.servers {
+		var s = r.servers[i]
+		if s.Weight() >= targetWeight {
+			result = r.servers[i]
 			break
 		}
 	}
+	return result
 }
 
-type randomWithWeight struct {
-	sync.RWMutex
-	totalWeight int
-	endpoints   []WeightNode
-}
-
-func newRandomWithWeight() *randomWithWeight {
-	return &randomWithWeight{}
-}
-
-func (r *randomWithWeight) Len() int {
-	return len(r.endpoints)
-}
-
-func (r *randomWithWeight) Less(i, j int) bool {
-	return r.endpoints[i].Weight() < r.endpoints[j].Weight()
-}
-
-func (r *randomWithWeight) Swap(i, j int) {
-	r.endpoints[i], r.endpoints[j] = r.endpoints[j], r.endpoints[i]
-}
-
-func (r *randomWithWeight) GetNode(id string) interface{} {
-	r.RLock()
-	defer r.RUnlock()
-	for _, n := range r.endpoints {
-		if n.Id() == id {
-			return n
+func (r *random) Remove(id string) (ok bool) {
+	r.Lock()
+	defer r.Unlock()
+	for i := range r.servers {
+		if r.servers[i].Id() == id {
+			ok = true
+			delete(r.existServers, id)
+			r.servers = append(r.servers[:i], r.servers[i+1:]...)
+			break
 		}
 	}
-	return nil
+	return
 }
 
-func (r *randomWithWeight) AddNode(node interface{}) {
-	tn, ok := node.(WeightNode)
-	if !ok {
+func (r *random) AddNode(node Node) {
+	if node == nil || node.Weight() <= 0 {
+		panic("nil node or negative weight")
+	}
+	r.Lock()
+	defer r.Unlock()
+
+	if _, ok := r.existServers[node.Id()]; ok {
 		return
+	}
+
+	r.existServers[node.Id()] = struct{}{}
+	r.servers = append(r.servers, node)
+	r.servers.Sort()
+}
+
+func (r *random) Update(id string, node Node) {
+	if node == nil || node.Weight() <= 0 {
+		panic("nil node or negative weight")
 	}
 
 	r.Lock()
 	defer r.Unlock()
 
-	r.totalWeight += tn.Weight()
-	r.endpoints = append(r.endpoints, tn)
-}
-
-func (r *randomWithWeight) RemoveNode(nodeId string) {
-	r.Lock()
-	defer r.Unlock()
-
-	for i, n := range r.endpoints {
-		if nodeId == n.Id() {
-			r.totalWeight -= n.Weight()
-			r.endpoints = append(r.endpoints[:i], r.endpoints[i+1:]...)
+	var needSort bool
+	for i := range r.servers {
+		if r.servers[i].Id() == id {
+			if r.servers[i].Weight() != node.Weight() {
+				needSort = true
+			}
+			if node.Id() != id {
+				delete(r.existServers, r.servers[i].Id())
+				r.existServers[node.Id()] = struct{}{}
+			}
+			r.servers[i] = node
 			break
 		}
 	}
-}
-
-func (r *randomWithWeight) Next(args ...interface{}) interface{} {
-	r.RLock()
-	defer r.RUnlock()
-
-	var currentNode WeightNode
-	rand.Seed(time.Now().UnixNano())
-	weight := rand.Intn(r.totalWeight)
-	sort.Sort(r)
-	for i := 0; i < len(r.endpoints); i++ {
-		if weight < r.endpoints[i].Weight() {
-			currentNode = r.endpoints[i]
-			break
-		}
-	}
-	// 如果权重分配不均匀，则采用随机
-	if currentNode == nil {
-		idx := rand.Intn(len(r.endpoints))
-		currentNode = r.endpoints[idx]
-	}
-	return currentNode
-}
-
-func (r *randomWithWeight) Range(f func(node interface{}) bool) {
-	if len(r.endpoints) == 0 {
-		return
-	}
-
-	for _, ep := range r.endpoints {
-		if !f(ep) {
-			break
-		}
+	if needSort {
+		r.servers.Sort()
 	}
 }

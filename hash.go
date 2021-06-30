@@ -1,104 +1,137 @@
 package balance
 
 import (
-	"hash/crc32"
+	"crypto/sha1"
+	"sync"
+
+	"math"
 	"sort"
 	"strconv"
-	"sync"
 )
-
-type uint32Slice []uint32
-
-func (p uint32Slice) Len() int           { return len(p) }
-func (p uint32Slice) Less(i, j int) bool { return p[i] < p[j] }
-func (p uint32Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 const (
-	defaultReplicas = 400
+	defaultVirtualSpots = 400
 )
 
-type Hash func([]byte) uint32
+type nodesArray []node
 
-type hashMap struct {
-	sync.Mutex
-	hash     Hash
-	replicas int
-	keys     uint32Slice
-	data     map[uint32]HashNode
+func (p nodesArray) Len() int           { return len(p) }
+func (p nodesArray) Less(i, j int) bool { return p[i].spotValue < p[j].spotValue }
+func (p nodesArray) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p nodesArray) Sort()              { sort.Sort(p) }
+
+type node struct {
+	nodeKey   string
+	spotValue uint32
 }
 
-func newHashMap() *hashMap {
-	var m = &hashMap{
-		Mutex:    sync.Mutex{},
-		hash:     crc32.ChecksumIEEE,
-		replicas: defaultReplicas,
-		keys:     uint32Slice{},
-		data:     make(map[uint32]HashNode),
+type hash struct {
+	mu           sync.RWMutex
+	virtualSpots int
+	nodes        nodesArray
+	weights      map[string]Node
+}
+
+func NewHash() *hash {
+	h := &hash{
+		virtualSpots: defaultVirtualSpots,
+		weights:      make(map[string]Node),
 	}
-	return m
+	return h
 }
 
-func (h *hashMap) AddNode(node interface{}) {
-	h.Lock()
-	defer h.Unlock()
-
-	tn, ok := node.(HashNode)
-	if ok {
-		for i := 0; i < h.replicas; i++ {
-			hv := h.hash([]byte(strconv.Itoa(i) + tn.Identifier()))
-			h.keys = append(h.keys, hv)
-			h.data[hv] = tn
-		}
-		sort.Sort(h.keys)
+func (h *hash) AddNode(node Node) {
+	if node == nil || node.Weight() <= 0 {
+		panic("nil node or negative weight")
 	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.weights[node.Id()] = node
+	h.generate()
 }
 
-func (h *hashMap) RemoveNode(key string) {
-	h.Lock()
-	defer h.Unlock()
-
-	var hv = h.hash([]byte(key))
-	var idx = sort.Search(len(h.keys), func(i int) bool {
-		return h.keys[i] >= hv
-	})
-
-	delete(h.data, h.keys[uint32(idx%len(h.keys))])
-}
-
-func (h *hashMap) GetNode(key string) interface{} {
-	h.Lock()
-	defer h.Unlock()
-
-	hv := h.hash([]byte(key))
-	idx := sort.Search(len(h.keys), func(i int) bool {
-		return h.keys[i] >= hv
-	})
-	return h.data[h.keys[uint32(idx%len(h.keys))]]
-}
-
-func (h *hashMap) Next(args ...interface{}) interface{} {
-	var result []HashNode
-	for _, arg := range args {
-		str, ok := arg.(string)
-		if !ok || len(str) == 0 {
-			continue
-		}
-		hv := h.hash([]byte(str))
-		idx := sort.Search(len(h.keys), func(i int) bool {
-			return h.keys[i] >= hv
-		})
-		result = append(result, h.data[h.keys[uint32(idx%len(h.keys))]])
-	}
-	return result
-}
-
-func (h *hashMap) Range(f func(node interface{}) bool) {
-	if len(h.data) == 0 {
+func (h *hash) Remove(id string) (ok bool) {
+	if len(id) <= 0 {
 		return
 	}
-	for _, ep := range h.data {
-		if !f(ep) {
-			break
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.weights, id)
+	h.generate()
+	return true
+}
+
+func (h *hash) Update(id string, node Node) {
+	if node == nil || node.Weight() <= 0 {
+		panic("nil node or negative weight")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.weights, id)
+	h.weights[node.Id()] = node
+	h.generate()
+}
+
+func (h *hash) Next(key ...string) Node {
+	if len(key) == 0 {
+		return nil
+	}
+	if len(h.nodes) == 0 {
+		return nil
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	s := key[0]
+	hasher := sha1.New()
+	hasher.Write([]byte(s))
+	hashBytes := hasher.Sum(nil)
+	v := genValue(hashBytes[6:10])
+	i := sort.Search(len(h.nodes), func(i int) bool { return h.nodes[i].spotValue >= v })
+
+	if i == len(h.nodes) {
+		i = 0
+	}
+
+	for k := range h.weights {
+		if k == h.nodes[i].nodeKey {
+			return h.weights[k]
 		}
 	}
+	return nil
+}
+
+func (h *hash) generate() {
+	h.nodes = nodesArray{}
+	var totalW int64
+	for _, e := range h.weights {
+		totalW += e.Weight()
+	}
+
+	totalVirtualSpots := h.virtualSpots * len(h.weights)
+
+	for id, n := range h.weights {
+		spots := int(math.Floor(float64(n.Weight()) / float64(totalW) * float64(totalVirtualSpots)))
+		for i := 1; i <= spots; i++ {
+			hasher := sha1.New()
+			hasher.Write([]byte(id + ":" + strconv.Itoa(i)))
+			hashBytes := hasher.Sum(nil)
+			newN := node{
+				nodeKey:   id,
+				spotValue: genValue(hashBytes[6:10]),
+			}
+			h.nodes = append(h.nodes, newN)
+			hasher.Reset()
+		}
+	}
+	h.nodes.Sort()
+}
+
+func genValue(bs []byte) uint32 {
+	if len(bs) < 4 {
+		return 0
+	}
+	v := (uint32(bs[3]) << 24) | (uint32(bs[2]) << 16) | (uint32(bs[1]) << 8) | (uint32(bs[0]))
+	return v
 }

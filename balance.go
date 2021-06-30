@@ -1,54 +1,53 @@
 package balance
 
-type Balancer interface {
-	AddNode(interface{})
-	RemoveNode(string)
-	GetNode(string) interface{}
-	Next(...interface{}) interface{}
-	Range(func(interface{}) bool)
-}
+import "sort"
 
-// 普通节点，非权重，非hash
-type Node interface {
-	Id() string
-}
-
-// 采用加权算法的节点，节点需要实现这个节点，如果采用的是非加权算法，实现空接口即可
-type WeightNode interface {
-	Node
-	OriginalWeight() int // 初始权重
-	Weight() int         // 获取节点当前权重
-	UpdateWeight(int)    // 更新节点权重
-}
-
-// 采用一致性hash算法的节点
-type HashNode interface {
-	Identifier() string // 可以唯一标示节点的字符串
-}
-
-type Bt uint8
+type BalancingType int8
 
 const (
-	SimpleRandom Bt = iota + 1
-	RandomWithWeight
-	SimplePolling
-	PollingWithWeight
-	ConsistentHash
+	Random BalancingType = iota + 1
+	Polling
+	Hash
 )
 
-func NewBalancer(bt Bt) Balancer {
-	switch bt {
-	case SimpleRandom:
-		return newSimpleRandom()
-	case RandomWithWeight:
-		return newRandomWithWeight()
-	case SimplePolling:
-		return newSimplePolling()
-	case PollingWithWeight:
-		return newPollingWithWeight()
-	case ConsistentHash:
-		return newHashMap()
+type Balancer interface {
+	AddNode(Node)
+	Remove(id string) bool
+	Update(id string, node Node)
+	Next(ids ...string) Node
+}
+
+func NewBalancer(bType BalancingType) Balancer {
+	switch bType {
+	case Random:
+		return NewRandom()
+	case Polling:
+		return NewPolling()
 	default:
-		return nil
+		return NewHash()
 	}
+}
+
+type Node interface {
+	Id() string
+	Weight() int64
+	SetWeight(int64)
+}
+
+type nodeList []Node
+
+func (n nodeList) Len() int {
+	return len(n)
+}
+
+func (n nodeList) Less(i, j int) bool {
+	return n[i].Weight() < n[j].Weight()
+}
+
+func (n nodeList) Swap(i, j int) {
+	n[i], n[j] = n[j], n[i]
+}
+
+func (n nodeList) Sort() {
+	sort.Sort(n)
 }

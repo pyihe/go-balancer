@@ -4,176 +4,103 @@ import (
 	"sync"
 )
 
-type simplePolling struct {
-	sync.RWMutex
-	currentIndex int
-	endpoints    []Node
+type polling struct {
+	sync.Mutex
+	servers       nodeList
+	existServers  map[string]struct{}
+	currentWeight int64 // 当前所有权重之和
 }
 
-func newSimplePolling() *simplePolling {
-	return &simplePolling{}
-}
-
-func (p *simplePolling) GetNode(id string) interface{} {
-	p.RLock()
-	defer p.RUnlock()
-
-	for _, n := range p.endpoints {
-		if n.Id() == id {
-			return n
-		}
-	}
-	return nil
-}
-
-func (p *simplePolling) AddNode(node interface{}) {
-	nt, ok := node.(Node)
-	if !ok {
-		return
-	}
-	p.Lock()
-	defer p.Unlock()
-	p.endpoints = append(p.endpoints, nt)
-}
-
-func (p *simplePolling) RemoveNode(nodeId string) {
-	p.Lock()
-	defer p.Unlock()
-
-	for i, v := range p.endpoints {
-		if nodeId == v.Id() {
-			p.endpoints = append(p.endpoints[:i], p.endpoints[i+1:]...)
-			break
-		}
+func NewPolling() *polling {
+	return &polling{
+		existServers: make(map[string]struct{}),
 	}
 }
 
-func (p *simplePolling) Next(args ...interface{}) interface{} {
-	p.RLock()
-	defer p.RUnlock()
-
-	total := len(p.endpoints)
-	if total == 0 {
+func (p *polling) Next(ids ...string) Node {
+	if len(p.servers) == 0 {
 		return nil
 	}
 
-	if p.currentIndex >= total {
-		p.currentIndex = 0
-	}
-	node := p.endpoints[p.currentIndex]
-	p.currentIndex = (p.currentIndex + 1) % total
-	return node
-}
+	p.Lock()
+	defer p.Unlock()
 
-func (p *simplePolling) Range(f func(node interface{}) bool) {
-	if len(p.endpoints) == 0 {
-		return
-	}
+	var nodeLen = len(p.servers)
+	var result = p.servers[nodeLen-1]
 
-	for _, ep := range p.endpoints {
-		if !f(ep) {
-			break
+	// 将权重最大的节点的权重减去当前总权重
+	for i := range p.servers {
+		var s = p.servers[i]
+		var oldWeight = s.Weight()
+		s.SetWeight(oldWeight * 2)
+		if i == nodeLen-1 {
+			s.SetWeight(s.Weight() - p.currentWeight)
 		}
 	}
+	p.servers.Sort()
+	p.currentWeight = 0
+	for i := range p.servers {
+		p.currentWeight += p.servers[i].Weight()
+	}
+	return result
 }
 
-type pollingWithWeight struct {
-	sync.Mutex
-	totalWeight   int
-	currentWeight int
-	endpoints     []WeightNode
-}
-
-func newPollingWithWeight() *pollingWithWeight {
-	return &pollingWithWeight{}
-}
-
-func (p *pollingWithWeight) weight() (max int, total int) {
-	for _, n := range p.endpoints {
-		total += n.Weight()
-		if n.Weight() > max {
-			max = n.Weight()
+func (p *polling) Remove(id string) (ok bool) {
+	p.Lock()
+	defer p.Unlock()
+	for i := range p.servers {
+		if p.servers[i].Id() == id {
+			ok = true
+			delete(p.existServers, id)
+			p.currentWeight -= p.servers[i].Weight()
+			p.servers = append(p.servers[:i], p.servers[i+1:]...)
+			break
 		}
 	}
 	return
 }
 
-func (p *pollingWithWeight) GetNode(id string) interface{} {
+func (p *polling) AddNode(node Node) {
+	if node == nil || node.Weight() <= 0 {
+		panic("nil node or negative weight")
+	}
 	p.Lock()
 	defer p.Unlock()
-	for _, n := range p.endpoints {
-		if n.Id() == id {
-			return n
-		}
-	}
-	return nil
-}
 
-func (p *pollingWithWeight) AddNode(node interface{}) {
-	nt, ok := node.(WeightNode)
-	if !ok {
+	if _, ok := p.existServers[node.Id()]; ok {
 		return
 	}
 
+	p.existServers[node.Id()] = struct{}{}
+	p.servers = append(p.servers, node)
+	p.currentWeight += node.Weight()
+	p.servers.Sort()
+}
+
+func (p *polling) Update(id string, node Node) {
+	if node == nil || node.Weight() <= 0 {
+		panic("nil node or negative weight")
+	}
+
 	p.Lock()
 	defer p.Unlock()
 
-	p.endpoints = append(p.endpoints, nt)
-	p.currentWeight, p.totalWeight = p.weight()
-}
-
-func (p *pollingWithWeight) RemoveNode(nodeId string) {
-	p.Lock()
-	defer p.Unlock()
-
-	for i, n := range p.endpoints {
-		if n.Id() == nodeId {
-			p.endpoints = append(p.endpoints[:i], p.endpoints[i+1:]...)
+	var needSort bool
+	for i := range p.servers {
+		if p.servers[i].Id() == id {
+			if p.servers[i].Weight() != node.Weight() {
+				p.currentWeight += node.Weight() - p.servers[i].Weight()
+				needSort = true
+			}
+			if node.Id() != id {
+				delete(p.existServers, id)
+				p.existServers[node.Id()] = struct{}{}
+			}
+			p.servers[i] = node
 			break
 		}
 	}
-	p.currentWeight, p.totalWeight = p.weight()
-}
-
-func (p *pollingWithWeight) Next(args ...interface{}) interface{} {
-	p.Lock()
-	defer p.Unlock()
-
-	// 每次找当前权重最大的节点
-	var currentNode WeightNode
-	for _, n := range p.endpoints {
-		if n.Weight() == p.currentWeight {
-			currentNode = n
-			break
-		}
-	}
-
-	if currentNode == nil {
-		return nil
-	}
-
-	// 将权重最大的节点的权重减去当前总权重
-	newWeight := currentNode.Weight() - p.totalWeight
-	currentNode.UpdateWeight(newWeight)
-
-	// 将操作后的节点列表中的每个节点的权重与初始权重相加
-	for _, n := range p.endpoints {
-		weight := n.Weight() + n.OriginalWeight()
-		n.UpdateWeight(weight)
-	}
-
-	p.currentWeight, p.totalWeight = p.weight()
-	return currentNode
-}
-
-func (p *pollingWithWeight) Range(f func(node interface{}) bool) {
-	if len(p.endpoints) == 0 {
-		return
-	}
-
-	for _, ep := range p.endpoints {
-		if !f(ep) {
-			break
-		}
+	if needSort {
+		p.servers.Sort()
 	}
 }
