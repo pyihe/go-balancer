@@ -100,3 +100,13 @@ func (r *random) Update(id string, node Node) {
 		r.servers.Sort()
 	}
 }
+
+func (r *random) Get(id string) (result Node) {
+	for i := range r.servers {
+		if r.servers[i].Id() == id {
+			result = r.servers[i]
+			break
+		}
+	}
+	return
+}

@@ -104,3 +104,13 @@ func (p *polling) Update(id string, node Node) {
 		p.servers.Sort()
 	}
 }
+
+func (p *polling) Get(id string) (result Node) {
+	for i := range p.servers {
+		if p.servers[i].Id() == id {
+			result = p.servers[i]
+			break
+		}
+	}
+	return
+}

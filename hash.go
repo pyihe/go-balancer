@@ -102,6 +102,16 @@ func (h *hash) Next(key ...string) Node {
 	return nil
 }
 
+func (h *hash) Get(id string) (result Node) {
+	for k := range h.weights {
+		if k == id {
+			result = h.weights[k]
+			break
+		}
+	}
+	return
+}
+
 func (h *hash) generate() {
 	h.nodes = nodesArray{}
 	var totalW int64

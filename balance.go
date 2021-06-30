@@ -15,6 +15,7 @@ type Balancer interface {
 	Remove(id string) bool
 	Update(id string, node Node)
 	Next(ids ...string) Node
+	Get(id string) Node
 }
 
 func NewBalancer(bType BalancingType) Balancer {
